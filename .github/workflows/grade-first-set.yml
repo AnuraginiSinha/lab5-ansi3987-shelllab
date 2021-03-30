@@ -1,0 +1,26 @@
+name: grade-first-set
+on: [push]
+jobs:
+  test-first-set:
+    runs-on: self-hosted
+    steps:
+      - name: prepare
+        uses: actions/checkout@v2
+      - name: specify python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.7'
+      - name: prepare to build
+        run: make clean
+      - name: build
+        run: make tsh
+      - name: check python version
+        run: python3 --version
+      - name: run test 1
+        run: python3 ./shellAutograder.py 1
+      - name: run test 2
+        run: python3 ./shellAutograder.py 2
+      - name: run test 3
+        run: python3 ./shellAutograder.py 3
+      - name: run test 4
+        run: python3 ./shellAutograder.py 4
