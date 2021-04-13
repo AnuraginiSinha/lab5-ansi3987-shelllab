@@ -1,5 +1,4 @@
 
-  
 //
 // tsh - A tiny shell program with job control
 //
@@ -163,7 +162,7 @@ void eval(char *cmdline)
     pid_t pid;
     struct job_t *job;
     if (!builtin_cmd(argv)) {
-        pid = fork();
+        pid = fork();//create fork for child
             setpgid(0,0);
     if(pid == 0) { 		
     execv(argv[0], argv); 
@@ -195,23 +194,20 @@ void eval(char *cmdline)
 //
 int builtin_cmd(char **argv)
 {
-  string cmd(argv[0]);
-  /* check for quitting or exitting first */
-  if(cmd == "quit") exit(0);
-  
-  /* If a forground or background task    */
-  else if(cmd == "fg" || cmd == "bg"){
-	do_bgfg(argv);
-	return 1;
+  string cmd(argv[0]); 
+  if (cmd == "quit") { 
+	exit(0);
+	}		
+  else if(cmd == "bg" || cmd == "fg") {
+  	do_bgfg(argv);
+  	return 1;
   }
-  /* Print out the job list               */
-  else if(cmd == "jobs"){
+  else if (cmd == "jobs"){
 	listjobs(jobs);
 	return 1;
-  }
-
-  return 0;
-}
+	}				
+  return 0;     
+}	
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -266,22 +262,18 @@ void do_bgfg(char **argv)
   // your benefit.
   //
 string cmd(argv[0]);
-
-    if(cmd == "fg"){
-        // if the job is stops continue
-    if(jobp->state==ST){
-        kill(-jobp -> pid, SIGCONT);
-        }
-        jobp -> state = FG;//set state to foreground job
-        waitfg(jobp -> pid);// wait to finnish
-
-    }else if(cmd == "bg"){
-        kill(-jobp -> pid, SIGCONT);
-        jobp -> state = BG;
-        printf("[%d] (%d) %s",jobp -> jid, jobp -> pid, jobp->cmdline);
-        }
-
-        }
+  if(cmd == "bg")  {
+  	jobp->state = BG; 
+  	kill(-jobp->pid, SIGCONT); 
+  	printf("[%d] (%d) %s", jobp->jid, jobp->pid, jobp->cmdline);
+  }
+  if(cmd == "fg")  {
+  	jobp->state = FG;
+  	kill(-jobp->pid, SIGCONT); 
+  	waitfg(jobp->pid); 
+  }
+  return;
+}
 
 
 /////////////////////////////////////////////////////////////////////////////
@@ -323,25 +315,26 @@ void waitfg(pid_t pid)
 void sigchld_handler(int sig)
 {
   //fprintf(stderr, "In SIGCHLD handler\n");
-  for (;;)
-  {
-    // Figure out who died / stopped using WAIT()
-    int pid = wait(NULL);
-    if (pid < 0)
-    {
-      //fprintf(stderr, "No more children to reap\n");
-      break;
-    }
-    else
-    {
-      //fprintf(stderr, "Process %d died\n", pid);
-      deletejob(jobs, pid);
-    }
-  }
-  // Go through jobs data structure and indicate the PID has died....
-  running = 0;
-  //fprintf(stderr, "Running set to %d\n", running);
-  return;
+  int status;
+  pid_t pid;
+  while((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0) {
+		if(WIFSTOPPED(status)) { 
+			struct job_t *job = getjobpid(jobs, pid);
+			printf("Job [%d] (%d) stopped by signal 20\n", job->jid, pid);
+            job->state = ST;
+			return;
+		}
+		else if(WIFSIGNALED(status)) { 
+			struct job_t *job = getjobpid(jobs, pid); 
+			printf("Job [%d] (%d) terminated by signal 2\n", job->jid, pid);
+			deletejob(jobs, pid);
+		}
+		else {		
+ 			deletejob(jobs, pid);
+ 		}
+ 	}		
+	return; 
+
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -353,14 +346,11 @@ void sigchld_handler(int sig)
 int how_many = 0;
 void sigint_handler(int sig)
 {
-    /* Set up a temporary structure so that we can save the FG task  */
-    pid_t temp = fgpid(jobs);
-    if(temp != 0)
-    {
-       kill(-temp, SIGINT);
+    pid_t pid = fgpid(jobs);
+	if (pid > 0) { //must be greater than zero to be a fg job, 0 means no fg process found
+		kill(-pid, sig);
     }
-
-  return;
+	return;
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -371,17 +361,13 @@ void sigint_handler(int sig)
 //
 void sigtstp_handler(int sig)    
 {
-    /* Set up a temp so that we can save the FG Task  */
-    pid_t temp = fgpid(jobs);
-/* If there is foreground task then pause                */
-if(temp != 0)
-{
-        kill(-temp, SIGTSTP);
-}
-
-  //fprintf(stderr, "You got put to sleep!\n");
+    pid_t pid = fgpid(jobs);
+  if(pid > 0) {
+  	kill(-pid, sig);
+  }
   return;
 }
+
 
 /*********************
  * End signal handlers
