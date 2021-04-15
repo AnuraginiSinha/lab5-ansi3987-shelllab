@@ -157,33 +157,40 @@ int running = 0;
 
 void eval(char *cmdline)
 {
-  char *argv[MAXARGS];
+/* Parse command line */
+  //
+  // The 'argv' vector is filled in by the parseline
+  // routine below. It provides the arguments needed
+  // for the execve() routine, which you'll need to
+  // use below to launch a process.
+  // The 'bg' variable is TRUE if the job should run
+  // in background mode or FALSE if it should run in FG
+    char *argv[MAXARGS];
     int bg = parseline(cmdline, argv); 
     pid_t pid;
     struct job_t *job;
     if (!builtin_cmd(argv)) {
-        pid = fork();//create fork for child
-            setpgid(0,0);
-    if(pid == 0) { 		
-    execv(argv[0], argv); 
-    printf("%s: Command not found\n", argv[0]);
-     exit(0); 		 
-      }		
-    else {		
-          if(!bg) { 
-               addjob(jobs, pid, FG, cmdline);	
-                waitfg(pid); 
-          }
-              else {
-                addjob(jobs, pid, BG, cmdline); 
-                job = getjobpid(jobs, pid);
-                printf("[%d] (%d) %s", job->jid, pid, cmdline);
-                    }
-                    }
-                    }	
+    pid = fork();// store the pid of the process
+    setpgid(0,0);
+    if(pid == 0) { 		 //pid is now fork or the child
+        execv(argv[0], argv); //run first command
+            printf("%s: Command not found\n", argv[0]);
+            exit(0); 		 
+}
+        else {
+           if(!bg) { //check to see if background job has been created
+               addjob(jobs, pid, FG, cmdline);	//run this job
+                waitfg(pid); //wait for foreground process to happen and get the pid of the process created
+            }
+             else {
+               addjob(jobs, pid, BG, cmdline); //add job to struct with bg state				
+                job = getjobpid(jobs, pid);	//get job pid from the job strcut
+                printf("[%d] (%d) %s", job->jid, pid, cmdline);//print out job pid in command line
+            }
+         }
+}
     return;
 }
-
 /////////////////////////////////////////////////////////////////////////////
 //
 // builtin_cmd - If the user has typed a built-in command then execute
@@ -196,18 +203,18 @@ int builtin_cmd(char **argv)
 {
   string cmd(argv[0]); 
   if (cmd == "quit") { 
-	exit(0);
-	}		
-  else if(cmd == "bg" || cmd == "fg") {
-  	do_bgfg(argv);
-  	return 1;
+    exit(0);
+    }
+  else if(cmd == "fg" || cmd == "bg") { //foreground job backgroung job
+      do_bgfg(argv);
+      return 1;
   }
   else if (cmd == "jobs"){
-	listjobs(jobs);
-	return 1;
-	}				
+    listjobs(jobs);
+    return 1;
+    }
   return 0;     
-}	
+}
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -263,14 +270,14 @@ void do_bgfg(char **argv)
   //
 string cmd(argv[0]);
   if(cmd == "bg")  {
-  	jobp->state = BG; 
-  	kill(-jobp->pid, SIGCONT); 
-  	printf("[%d] (%d) %s", jobp->jid, jobp->pid, jobp->cmdline);
+      jobp->state = BG; 
+      kill(-jobp->pid, SIGCONT); 
+      printf("[%d] (%d) %s", jobp->jid, jobp->pid, jobp->cmdline);
   }
   if(cmd == "fg")  {
-  	jobp->state = FG;
-  	kill(-jobp->pid, SIGCONT); 
-  	waitfg(jobp->pid); 
+      jobp->state = FG;
+      kill(-jobp->pid, SIGCONT); 
+      waitfg(jobp->pid); 
   }
   return;
 }
@@ -284,14 +291,14 @@ void waitfg(pid_t pid)
 {
   for(;;) {
 		
-        struct job_t *job = getjobpid(jobs,pid);
+        struct job_t *job = getjobpid(jobs,pid); 
         if ( job == NULL ) {
              return;
             }
-        if (job -> state != FG) {
+        if (job -> state != FG) {//check if the foreground pid is equal to the jobs(pid)
             return;
             }
-            sleep(100);
+            sleep(100); //this will be checking 100 seconds at a time for this
 
             }
 
@@ -317,23 +324,23 @@ void sigchld_handler(int sig)
   //fprintf(stderr, "In SIGCHLD handler\n");
   int status;
   pid_t pid;
-  while((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0) {
-		if(WIFSTOPPED(status)) { 
-			struct job_t *job = getjobpid(jobs, pid);
-			printf("Job [%d] (%d) stopped by signal 20\n", job->jid, pid);
+  while((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0) { //this is reaping the terminated child WNOHANG means wont hang around if no jobs
+    if(WIFSTOPPED(status)) { //get the job
+        struct job_t *job = getjobpid(jobs, pid);
+             printf("Job [%d] (%d) stopped by signal 20\n", job->jid, pid);
             job->state = ST;
-			return;
-		}
-		else if(WIFSIGNALED(status)) { 
-			struct job_t *job = getjobpid(jobs, pid); 
-			printf("Job [%d] (%d) terminated by signal 2\n", job->jid, pid);
-			deletejob(jobs, pid);
-		}
-		else {		
- 			deletejob(jobs, pid);
- 		}
- 	}		
-	return; 
+            return;
+    }
+        else if(WIFSIGNALED(status)) { 
+              struct job_t *job = getjobpid(jobs, pid); 
+              printf("Job [%d] (%d) terminated by signal 2\n", job->jid, pid);
+              deletejob(jobs, pid);//delete the job
+    }
+    else {
+     deletejob(jobs, pid);
+    }
+ }
+return; 
 
 }
 
@@ -347,10 +354,10 @@ int how_many = 0;
 void sigint_handler(int sig)
 {
     pid_t pid = fgpid(jobs);
-	if (pid > 0) { //must be greater than zero to be a fg job, 0 means no fg process found
-		kill(-pid, sig);
+    if (pid > 0) { //must be greater than zero to be a fg job, 0 means no fg process found
+        kill(-pid, sig);
     }
-	return;
+    return;
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -363,7 +370,7 @@ void sigtstp_handler(int sig)
 {
     pid_t pid = fgpid(jobs);
   if(pid > 0) {
-  	kill(-pid, sig);
+      kill(-pid, sig);
   }
   return;
 }
